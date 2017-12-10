@@ -1,0 +1,2 @@
+AutoMPG:  199 rows,   9 columns, missing values: 5
+cup98ID: 2500 rows, 479 columns, missing values: yes
