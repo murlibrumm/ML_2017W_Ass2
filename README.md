@@ -4,8 +4,8 @@
 
 * Auto MPG: https://www.kaggle.com/c/184702-tu-ml-ws-17-auto-mpg
 * KDD Cup 1998: https://www.kaggle.com/c/184702-tu-ml-ws-17-kdd-cup-1998-regression
-* TODO
-* TODO
+* Space Shuttle O-Ring: https://archive.ics.uci.edu/ml/datasets/Challenger+USA+Space+Shuttle+O-Ring
+* Appliances Energy Prediction: https://archive.ics.uci.edu/ml/datasets/Appliances+energy+prediction
 
 ## Regressors
 
