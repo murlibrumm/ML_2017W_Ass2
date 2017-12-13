@@ -24,7 +24,7 @@ class LastUpdatedOrderedDict(OrderedDict):
 
 
 # GLOBALS
-LOGGING          = True     # verbose logging output
+LOGGING          = False     # verbose logging output
 SPLIT_DATA       = 0.2      # split dataset into training and testdata
 DATAFRAME        = None     # our dataframe
 MISSING_VALUES   = 'mean'   # how to deal with missing values (delete, mean, median, most_frequent)
@@ -33,15 +33,15 @@ CLASS_ENC        = preprocessing.LabelEncoder()
 
 # PLOT EXPORT SETTINGS
 EXPORT_PLOT      = True
-X_LABEL          = 'Number of Trees'
-PLOT_FILE_NAME   = 'energy/forest.png'
+X_LABEL          = 'Perceptrons per Layer (3 Layers)'
+PLOT_FILE_NAME   = 'energy/neural-tanh-adam-adaptive-200.png'
 
 
 # change the regressor values here!
 # ALGORITHMS         = ['forest',       'knn',        'neural',    'bagging'] #algorithms to use ['forest', 'knn', 'bayes', 'neural']
 # algorithmParameter = [(70, 70+1, 10), (1, 15+1, 1), (2, 20+1, 3), (1, 50+1, 5)] # set a parameter in range(start, end, jump)
-ALGORITHMS         = ['forest']
-algorithmParameter = [(10, 100+1, 10)]
+ALGORITHMS         = ['neural']
+algorithmParameter = [(2, 20+1, 3)]
 
 # forest params (algorithmParameter controls n_estimators)
 forestCriterion = 'mse' # "mse" mean squared error "mae" mean absolute error
@@ -55,9 +55,9 @@ knnAlgorithm = 'auto'      # algorithm to compute the NN: {'ball_tree', 'kd_tree
 # TODO
 
 # neural MLP params (algorithmParameter controls hidden_layer_sizes, default: (100,))
-neuralActivation = 'relu' # (activation function for the hidden layer) : {‘identity’, ‘logistic’, ‘tanh’, ‘relu’}, default ‘relu’
+neuralActivation = 'tanh' # (activation function for the hidden layer) : {‘identity’, ‘logistic’, ‘tanh’, ‘relu’}, default ‘relu’
 neuralSolver = 'adam' # (for the weight optimization): {‘lbfgs’, ‘sgd’, ‘adam’}, default ‘adam’
-neuralLearningRate = 'constant' # (Learning rate schedule for weight updates).: {‘constant’, ‘invscaling’, ‘adaptive’}, default ‘constant’
+neuralLearningRate = 'adaptive' # (Learning rate schedule for weight updates).: {‘constant’, ‘invscaling’, ‘adaptive’}, default ‘constant’
 neuralMaxIter = 200 # max_iter : int, optional, default 200
 
 # filter warnings of the type UndefinedMetricWarning
@@ -169,7 +169,8 @@ def getRegressors():
 def normalizeDataset(data):
     # drop columns "date" and "lights"
     # (the latter would be a second thing to predict, but we wanna keep it simple... for now)
-    featureVal = data.drop(columns=['date', 'lights'])
+    # also, the random variables (r1, r2) should get dropped
+    featureVal = data.drop(columns=['date', 'lights', 'rv1', 'rv2'])
     if 'Appliances' in data.columns:
         featureVal = featureVal.drop(columns=['Appliances'])
 
