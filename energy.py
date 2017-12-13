@@ -33,19 +33,19 @@ CLASS_ENC        = preprocessing.LabelEncoder()
 
 # PLOT EXPORT SETTINGS
 EXPORT_PLOT      = True
-X_LABEL          = 'Perceptrons per Layer (3 Layers)'
-PLOT_FILE_NAME   = 'energy/neural-tanh-adam-adaptive-200.png'
+X_LABEL          = 'Number of Trees'
+PLOT_FILE_NAME   = 'energy/norv/forest-10.png'
 
 
 # change the regressor values here!
 # ALGORITHMS         = ['forest',       'knn',        'neural',    'bagging'] #algorithms to use ['forest', 'knn', 'bayes', 'neural']
 # algorithmParameter = [(70, 70+1, 10), (1, 15+1, 1), (2, 20+1, 3), (1, 50+1, 5)] # set a parameter in range(start, end, jump)
-ALGORITHMS         = ['neural']
-algorithmParameter = [(2, 20+1, 3)]
+ALGORITHMS         = ['forest']
+algorithmParameter = [(1, 102, 10)]
 
 # forest params (algorithmParameter controls n_estimators)
 forestCriterion = 'mse' # "mse" mean squared error "mae" mean absolute error
-forestMaxDepth  = None      # how deep can a tree be max; default: none
+forestMaxDepth  = 10      # how deep can a tree be max; default: none
 
 # knn params (algorithmParameter control n_neighbors)
 knnWeights   = 'distance'   # weights: 1) 'uniform' (default): weighted equally. 2) 'distance': closer neighbors => more influence
@@ -108,18 +108,18 @@ def trainAndPredict(regressors):
 
         # perform cross validation
         X, y = getSamplesAndTargets(DATAFRAME)
-        crossScoresMeanAE = cross_val_score(model, X, y, cv=10, scoring='neg_mean_absolute_error')
-        crossScoresMeanSE = cross_val_score(model, X, y, cv=10, scoring='neg_mean_squared_error')
+        crossScoresMeanAE = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='neg_mean_absolute_error')
+        crossScoresMeanSE = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='neg_mean_squared_error')
         
         try:
-            crossScoresMeanSLE = cross_val_score(model, X, y, cv=10, scoring='neg_mean_squared_log_error')
+            crossScoresMeanSLE = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='neg_mean_squared_log_error')
         except:
             print("Error at calculating neg_mean_squared_log_error, using mse instead")
-            crossScoresMeanSLE = cross_val_score(model, X, y, cv=10, scoring='neg_mean_squared_error')
+            crossScoresMeanSLE = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='neg_mean_squared_error')
 
-        crossScoresMedianAE     = cross_val_score(model, X, y, cv=10, scoring='neg_median_absolute_error')
-        crossScoresExplainedVar = cross_val_score(model, X, y, cv=10, scoring='explained_variance')
-        crossScoresR2           = cross_val_score(model, X, y, cv=10, scoring='r2')
+        crossScoresMedianAE     = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='neg_median_absolute_error')
+        crossScoresExplainedVar = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='explained_variance')
+        crossScoresR2           = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='r2')
 
         # summarize the fit of the model
         crossScoresMean = (crossScoresMeanAE.mean(), crossScoresMeanSE.mean(), crossScoresMeanSLE.mean(), crossScoresMedianAE.mean(), crossScoresExplainedVar.mean(), crossScoresR2.mean())
@@ -148,15 +148,15 @@ def getRegressors():
             if val == "forest":
                 name = "Random Forests (n={0})".format(i)
                 regressors.append(
-                    (RandomForestRegressor(n_estimators=i, criterion=forestCriterion, max_depth=forestMaxDepth), name))
+                    (RandomForestRegressor(n_estimators=i, criterion=forestCriterion, max_depth=forestMaxDepth, n_jobs=-1), name))
             if val == "knn":
                 name = "kNN (n={0})".format(i)
                 regressors.append(
-                    (KNeighborsRegressor(n_neighbors=i, weights=knnWeights, algorithm=knnAlgorithm), name))
+                    (KNeighborsRegressor(n_neighbors=i, weights=knnWeights, algorithm=knnAlgorithm, n_jobs=-1), name))
             if val == "bagging":
                 name = "Bagging Regressor (estimators={0})".format(i)
                 regressors.append(
-                    (BaggingRegressor(n_estimators=i), name))
+                    (BaggingRegressor(n_estimators=i, n_jobs=-1), name))
             if val == "neural":
                 name = "Neural Network (layers={0})".format(i)
                 regressors.append(
