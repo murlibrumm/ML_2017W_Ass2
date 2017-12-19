@@ -30,16 +30,16 @@ SCALER           = None
 CLASS_ENC        = preprocessing.LabelEncoder()
 
 # PLOT EXPORT SETTINGS
-EXPORT_PLOT      = False
-X_LABEL          = ''
-PLOT_FILE_NAME   = 'kdd.png'
+EXPORT_PLOT      = True
+X_LABEL          = 'Neighbors'
+PLOT_FILE_NAME   = 'kdd_knn.png'
 
 
 # change the regressor values here!
 #ALGORITHMS         = ['forest',       'knn',        'neural',    'bagging'] #algorithms to use ['forest', 'knn', 'bayes', 'neural']
 #algorithmParameter = [(70, 70+1, 10), (1, 15+1, 1), (2, 20+1, 3), (1, 50+1, 5)] # set a parameter in range(start, end, jump)
 ALGORITHMS         = ['knn']
-algorithmParameter = [(10, 10+1, 10)]
+algorithmParameter = [(10, 100+1, 5)]
 
 # forest params (algorithmParameter controls n_estimators)
 forestCriterion = 'mse' # "mse" mean squared error "mae" mean absolute error
@@ -54,19 +54,19 @@ knnAlgorithm = 'auto'      # algorithm to compute the NN: {'ball_tree', 'kd_tree
 
 # neural MLP params (algorithmParameter controls hidden_layer_sizes, default: (100,))
 neuralActivation = 'relu' # (activation function for the hidden layer) : {‘identity’, ‘logistic’, ‘tanh’, ‘relu’}, default ‘relu’
-neuralSolver = 'adam' # (for the weight optimization): {‘lbfgs’, ‘sgd’, ‘adam’}, default ‘adam’
-neuralLearningRate = 'constant'# (Learning rate schedule for weight updates).: {‘constant’, ‘invscaling’, ‘adaptive’}, default ‘constant’
+neuralSolver = 'lbfgs' # (for the weight optimization): {‘lbfgs’, ‘sgd’, ‘adam’}, default ‘adam’
+neuralLearningRate = 'invscaling'# (Learning rate schedule for weight updates).: {‘constant’, ‘invscaling’, ‘adaptive’}, default ‘constant’
 neuralMaxIter = 200 # max_iter : int, optional, default 200
 
 # EXPORT PREDICTION
-EXPORT_PREDICTION = True
+EXPORT_PREDICTION = False
 EXPORT_MODEL      = None
-EXPORT_FILE_NAME  = 'kdd_knn_10_prediction.csv'
+EXPORT_FILE_NAME  = 'kdd_knn_60_prediction.csv'
 
 
 # filter warnings of the type UndefinedMetricWarning
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
+#warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 
 def main():
@@ -154,12 +154,12 @@ def trainAndPredict(regressors):
 
         # perform cross validation
         X, y = getSamplesAndTargets(DATAFRAME)
-        crossScoresMeanAE       = cross_val_score(model, X, y, cv=10, scoring='neg_mean_absolute_error')
-        crossScoresMeanSE       = cross_val_score(model, X, y, cv=10, scoring='neg_mean_squared_error')
-        crossScoresMeanSLE      = cross_val_score(model, X, y, cv=10, scoring='neg_mean_squared_log_error')
-        crossScoresMedianAE     = cross_val_score(model, X, y, cv=10, scoring='neg_median_absolute_error')
-        crossScoresExplainedVar = cross_val_score(model, X, y, cv=10, scoring='explained_variance')
-        crossScoresR2           = cross_val_score(model, X, y, cv=10, scoring='r2')
+        crossScoresMeanAE       = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_absolute_error')
+        crossScoresMeanSE       = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_error')
+        crossScoresMeanSLE      = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_log_error')
+        crossScoresMedianAE     = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_median_absolute_error')
+        crossScoresExplainedVar = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='explained_variance')
+        crossScoresR2           = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='r2')
 
         # summarize the fit of the model
         crossScoresMean = (crossScoresMeanAE.mean(), crossScoresMeanSE.mean(), crossScoresMeanSLE.mean(), crossScoresMedianAE.mean(), crossScoresExplainedVar.mean(), crossScoresR2.mean())
@@ -220,7 +220,7 @@ def getRegressors():
                 regressors.append(
                     (BaggingRegressor(n_estimators=i), name))
             if val == "neural":
-                name = "Neural Network (layers={0})".format(i)
+                name = "Neural Network (perceptrons per layer={0})".format(i)
                 regressors.append(
                     (MLPRegressor(hidden_layer_sizes=(i, i, i), activation=neuralActivation, solver=neuralSolver,
                                    learning_rate=neuralLearningRate, max_iter=neuralMaxIter), name))
