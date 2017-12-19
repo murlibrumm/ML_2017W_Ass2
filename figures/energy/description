@@ -1,6 +1,8 @@
 The folder 'rv' contains plots for the results of the regressors where the random variables have not yet been removed from the dataset;
 the folder 'norv' contains plots for the dataset with random variables removed.
 
+The third variant, 'nopp' contains plots for the results of regressors as used without pre-processing (normalization and scaling).
+
 the files are named after the regressor and the chosen secondary regressor parameters.
 the primary regressor parameters have been used as X axis in the plots.
 
