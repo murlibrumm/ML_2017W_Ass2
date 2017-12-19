@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 
-import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import BaggingRegressor
 from sklearn.exceptions import UndefinedMetricWarning, ConvergenceWarning
 from sklearn import preprocessing
-import sys
+from sklearn.feature_selection import SelectFromModel
+from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
+from collections import OrderedDict
+import pandas as pd
 import numpy as np
 import warnings
 import matplotlib.pyplot as plt
-from collections import OrderedDict
+import sys
 
 
 class LastUpdatedOrderedDict(OrderedDict):
@@ -30,22 +32,23 @@ DATAFRAME        = None     # our dataframe
 MISSING_VALUES   = 'mean'   # how to deal with missing values (delete, mean, median, most_frequent)
 SCALER           = None
 CLASS_ENC        = preprocessing.LabelEncoder()
+FEATURE_SELECT   = True
 
 # PLOT EXPORT SETTINGS
 EXPORT_PLOT      = True
-X_LABEL          = 'Number of Trees'
-PLOT_FILE_NAME   = 'energy/norv/forest-10.png'
+X_LABEL          = 'Perceptrons per Layer (3 Layers)'
+PLOT_FILE_NAME   = 'energy/fs/neural-logistic-adam-constant-500.png'
 
 
 # change the regressor values here!
 # ALGORITHMS         = ['forest',       'knn',        'neural',    'bagging'] #algorithms to use ['forest', 'knn', 'bayes', 'neural']
 # algorithmParameter = [(70, 70+1, 10), (1, 15+1, 1), (2, 20+1, 3), (1, 50+1, 5)] # set a parameter in range(start, end, jump)
-ALGORITHMS         = ['forest']
-algorithmParameter = [(1, 102, 10)]
+ALGORITHMS         = ['neural']
+algorithmParameter = [(1, 21, 3)]
 
 # forest params (algorithmParameter controls n_estimators)
 forestCriterion = 'mse' # "mse" mean squared error "mae" mean absolute error
-forestMaxDepth  = 10      # how deep can a tree be max; default: none
+forestMaxDepth  = None      # how deep can a tree be max; default: none
 
 # knn params (algorithmParameter control n_neighbors)
 knnWeights   = 'distance'   # weights: 1) 'uniform' (default): weighted equally. 2) 'distance': closer neighbors => more influence
@@ -55,10 +58,10 @@ knnAlgorithm = 'auto'      # algorithm to compute the NN: {'ball_tree', 'kd_tree
 # TODO
 
 # neural MLP params (algorithmParameter controls hidden_layer_sizes, default: (100,))
-neuralActivation = 'tanh' # (activation function for the hidden layer) : {‘identity’, ‘logistic’, ‘tanh’, ‘relu’}, default ‘relu’
+neuralActivation = 'logistic' # (activation function for the hidden layer) : {‘identity’, ‘logistic’, ‘tanh’, ‘relu’}, default ‘relu’
 neuralSolver = 'adam' # (for the weight optimization): {‘lbfgs’, ‘sgd’, ‘adam’}, default ‘adam’
-neuralLearningRate = 'adaptive' # (Learning rate schedule for weight updates).: {‘constant’, ‘invscaling’, ‘adaptive’}, default ‘constant’
-neuralMaxIter = 200 # max_iter : int, optional, default 200
+neuralLearningRate = 'constant' # (Learning rate schedule for weight updates).: {‘constant’, ‘invscaling’, ‘adaptive’}, default ‘constant’
+neuralMaxIter = 500 # max_iter : int, optional, default 200
 
 # filter warnings of the type UndefinedMetricWarning
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
@@ -73,6 +76,7 @@ def main():
     printlog("==========================================================================")
     printlog(DATAFRAME)
     # DATAFRAME = handleMissingValues(DATAFRAME)
+    DATAFRAME = dropUninterestingColumns(DATAFRAME)
     DATAFRAME = normalizeDataset(DATAFRAME)
     regressors = getRegressors()
     trainAndPredict(regressors)
@@ -99,6 +103,14 @@ def trainAndPredict(regressors):
     training_samples, training_target = getSamplesAndTargets(train)
     test_samples,     actual_leagues  = getSamplesAndTargets(test)
 
+    # training/test split: use only the important features, discard the others
+    if FEATURE_SELECT:
+        clf = ExtraTreesClassifier()
+        clf = clf.fit(training_samples, training_target)
+        selector = SelectFromModel(clf, prefit=True)
+        training_samples = selector.transform(training_samples)
+        test_samples = selector.transform(test_samples)
+
     for (model, name) in regressors:
         # for each regressor, do the training and evaluation
         model.fit(training_samples, training_target)
@@ -108,6 +120,14 @@ def trainAndPredict(regressors):
 
         # perform cross validation
         X, y = getSamplesAndTargets(DATAFRAME)
+
+        # cross validation: use only the important features, discard the others
+        if FEATURE_SELECT:
+            clf = ExtraTreesClassifier()
+            clf = clf.fit(X, y)
+            selector = SelectFromModel(clf, prefit=True)
+            X = selector.transform(X)
+
         crossScoresMeanAE = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='neg_mean_absolute_error')
         crossScoresMeanSE = cross_val_score(model, X, y, cv=10, n_jobs=-1, scoring='neg_mean_squared_error')
         
@@ -164,13 +184,16 @@ def getRegressors():
                                    learning_rate=neuralLearningRate, max_iter=neuralMaxIter), name))
     return regressors
 
+def dropUninterestingColumns(data):
+    data = data.drop(columns=["date", "lights", "rv1", "rv2"])
+    return data
 
 # call this method first with the trainingdata
 def normalizeDataset(data):
     # drop columns "date" and "lights"
     # (the latter would be a second thing to predict, but we wanna keep it simple... for now)
     # also, the random variables (r1, r2) should get dropped
-    featureVal = data.drop(columns=['date', 'lights', 'rv1', 'rv2'])
+    featureVal = data.copy()
     if 'Appliances' in data.columns:
         featureVal = featureVal.drop(columns=['Appliances'])
 
