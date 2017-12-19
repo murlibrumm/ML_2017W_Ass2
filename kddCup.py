@@ -5,6 +5,8 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import BaggingRegressor
 from sklearn.exceptions import UndefinedMetricWarning, ConvergenceWarning
 from sklearn import preprocessing
+from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.feature_selection import SelectFromModel
 import sys
 from sklearn.model_selection import train_test_split, cross_val_score
 import numpy as np
@@ -22,24 +24,29 @@ class LastUpdatedOrderedDict(OrderedDict):
 
 
 # GLOBALS
-LOGGING          = True     # verbose logging output
-SPLIT_DATA       = 0.2      # split dataset into training and testdata
-DATAFRAME        = None     # our dataframe
-MISSING_VALUES   = 'mean'   # how to deal with missing values (delete, mean, median, most_frequent)
-SCALER           = None
-CLASS_ENC        = preprocessing.LabelEncoder()
+LOGGING                 = True     # verbose logging output
+SPLIT_DATA              = 0.2      # split dataset into training and testdata
+DATAFRAME               = None     # our dataframe
+MISSING_VALUES          = 'mean'   # how to deal with missing values (delete, mean, median, most_frequent)
+SCALER                  = None
+CLASS_ENC               = preprocessing.LabelEncoder()
+ONLY_IMPORTANT_FEATURES = True       # works good => speedup
+FEATURE_TRESHOLD        = '2*median'   # 2*median still works well => reduces features to ~30
+NORMALIZE_DATA          = False       # for forest, knn - no big difference
+SCALE_DATA              = False       # for forest, knn - no big difference
 
 # PLOT EXPORT SETTINGS
 EXPORT_PLOT      = True
-X_LABEL          = 'Neighbors'
-PLOT_FILE_NAME   = 'kdd_knn.png'
+X_LABEL          = 'Number of nodes (3 layers)'
+PLOT_FILE_NAME   = 'kdd/only_important_features/neural.png'
+#PLOT_FILE_NAME   = 'kdd/all_features/kdd_rf.png'
 
 
 # change the regressor values here!
 #ALGORITHMS         = ['forest',       'knn',        'neural',    'bagging'] #algorithms to use ['forest', 'knn', 'bayes', 'neural']
 #algorithmParameter = [(70, 70+1, 10), (1, 15+1, 1), (2, 20+1, 3), (1, 50+1, 5)] # set a parameter in range(start, end, jump)
-ALGORITHMS         = ['knn']
-algorithmParameter = [(10, 100+1, 5)]
+ALGORITHMS         = ['neural']
+algorithmParameter = [(2, 20+1, 3)]
 
 # forest params (algorithmParameter controls n_estimators)
 forestCriterion = 'mse' # "mse" mean squared error "mae" mean absolute error
@@ -59,9 +66,10 @@ neuralLearningRate = 'invscaling'# (Learning rate schedule for weight updates).:
 neuralMaxIter = 200 # max_iter : int, optional, default 200
 
 # EXPORT PREDICTION
-EXPORT_PREDICTION = False
-EXPORT_MODEL      = None
-EXPORT_FILE_NAME  = 'kdd_knn_60_prediction.csv'
+EXPORT_PREDICTION  = False
+EXPORT_MODEL       = None
+IMPORTANT_FEATURES = None
+EXPORT_FILE_NAME   = 'kdd_knn_500_IMP_FEAT_2.csv'
 
 
 # filter warnings of the type UndefinedMetricWarning
@@ -72,10 +80,7 @@ warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 def main():
     global DATAFRAME
     DATAFRAME = readDataset('datasets/cup98ID.shuf.5000.train.csv')
-    print(DATAFRAME)
     DATAFRAME = encodeDataset(DATAFRAME)
-    print("==========================================================================")
-    print(DATAFRAME)
     DATAFRAME = handleMissingValues(DATAFRAME)
     DATAFRAME = normalizeDataset(DATAFRAME)
     regressors = getRegressors()
@@ -92,6 +97,9 @@ def predictTestData():
 
     # get training & test samples/targets
     test_samples,     actual_class = getSamplesAndTargets(normalizedDf)
+
+    if (ONLY_IMPORTANT_FEATURES):
+        test_samples = test_samples[IMPORTANT_FEATURES]
 
     # prediction of the provided test data
     y_predicted_test = EXPORT_MODEL.predict(test_samples)
@@ -134,7 +142,7 @@ def handleMissingValues(dataframe):
 
 
 def trainAndPredict(regressors):
-    global EXPORT_MODEL
+    global EXPORT_MODEL, IMPORTANT_FEATURES
     resultsPerRegressor = LastUpdatedOrderedDict()
 
     # split into 80% training data, 20% test data
@@ -143,6 +151,18 @@ def trainAndPredict(regressors):
     # get training & test samples/targets
     training_samples, training_target = getSamplesAndTargets(train)
     test_samples,     actual_leagues  = getSamplesAndTargets(test)
+
+    # training/test split: use only the important features, discard the others
+    if ONLY_IMPORTANT_FEATURES:
+        clf = ExtraTreesClassifier()
+        clf = clf.fit(training_samples, training_target)
+        selector = SelectFromModel(clf, prefit=True, threshold=FEATURE_TRESHOLD)
+        training_samples_new = selector.transform(training_samples)
+        printlog("Relevant columns:")
+        printlog(training_samples.columns[selector.get_support()]) # get_support is a bool array (true if the column is relevant)
+        IMPORTANT_FEATURES = training_samples.columns[selector.get_support()]
+        training_samples = training_samples_new
+        test_samples = selector.transform(test_samples)
 
     for (model, name) in regressors:
         # for each regressor, do the training and evaluation
@@ -154,15 +174,24 @@ def trainAndPredict(regressors):
 
         # perform cross validation
         X, y = getSamplesAndTargets(DATAFRAME)
+
+        # cross validation: use only the important features, discard the others
+        if ONLY_IMPORTANT_FEATURES:
+            clf = ExtraTreesClassifier()
+            clf = clf.fit(X, y)
+            selector = SelectFromModel(clf, prefit=True, threshold=FEATURE_TRESHOLD)
+            X = selector.transform(X)
+
         crossScoresMeanAE       = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_absolute_error')
         crossScoresMeanSE       = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_error')
-        crossScoresMeanSLE      = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_log_error')
+        crossScoresMeanSLE       = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_error')
+        #crossScoresMeanSLE      = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_log_error')
         crossScoresMedianAE     = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_median_absolute_error')
         crossScoresExplainedVar = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='explained_variance')
         crossScoresR2           = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='r2')
 
         # summarize the fit of the model
-        crossScoresMean = (crossScoresMeanAE.mean(), crossScoresMeanSE.mean(), crossScoresMeanSLE.mean(), crossScoresMedianAE.mean(), crossScoresExplainedVar.mean(), crossScoresR2.mean())
+        crossScoresMean = ((-1)*crossScoresMeanAE.mean(), (-1)*crossScoresMeanSE.mean(), (-1)*crossScoresMeanSLE.mean(), (-1)*crossScoresMedianAE.mean(), crossScoresExplainedVar.mean(), crossScoresR2.mean())
         crossScoresStd  = (crossScoresMeanAE.std() * 2, crossScoresMeanSE.std() * 2, crossScoresMeanSLE.std() * 2, crossScoresMedianAE.std() * 2, crossScoresExplainedVar.std() * 2, crossScoresR2.std() * 2)
         printResults(crossScoresMean, crossScoresStd, actual_leagues, predicted_leagues, name)
         resultsPerRegressor[name] = crossScoresMean
@@ -220,7 +249,7 @@ def getRegressors():
                 regressors.append(
                     (BaggingRegressor(n_estimators=i), name))
             if val == "neural":
-                name = "Neural Network (perceptrons per layer={0})".format(i)
+                name = "Neural Network (3 layers with {0} nodes/layer)".format(i)
                 regressors.append(
                     (MLPRegressor(hidden_layer_sizes=(i, i, i), activation=neuralActivation, solver=neuralSolver,
                                    learning_rate=neuralLearningRate, max_iter=neuralMaxIter), name))
@@ -234,16 +263,18 @@ def normalizeDataset(data):
     if 'TARGET_D' in data.columns:
         featureVal = featureVal.drop(columns=['TARGET_D'])
 
-    SCALER = preprocessing.StandardScaler().fit(featureVal)
-    scaled_DF = pd.DataFrame(SCALER.transform(featureVal))
-    scaled_DF.columns = featureVal.columns
-    scaled_DF.index = featureVal.index
-    featureVal = scaled_DF
+    if SCALE_DATA:
+        SCALER = preprocessing.StandardScaler().fit(featureVal)
+        scaled_DF = pd.DataFrame(SCALER.transform(featureVal))
+        scaled_DF.columns = featureVal.columns
+        scaled_DF.index = featureVal.index
+        featureVal = scaled_DF
 
-    norm_DF = pd.DataFrame(preprocessing.normalize(featureVal, norm='l2'))
-    norm_DF.columns = featureVal.columns
-    norm_DF.index = featureVal.index
-    featureVal = norm_DF
+    if NORMALIZE_DATA:
+        norm_DF = pd.DataFrame(preprocessing.normalize(featureVal, norm='l2'))
+        norm_DF.columns = featureVal.columns
+        norm_DF.index = featureVal.index
+        featureVal = norm_DF
 
     if 'TARGET_D' in data.columns:
         featureVal = data.loc[:, 'TARGET_D':'TARGET_D'].join(featureVal)

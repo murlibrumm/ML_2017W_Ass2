@@ -5,6 +5,8 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import BaggingRegressor
 from sklearn.exceptions import UndefinedMetricWarning, ConvergenceWarning
 from sklearn import preprocessing
+from sklearn.ensemble import ExtraTreesClassifier, ExtraTreesRegressor
+from sklearn.feature_selection import SelectFromModel
 import sys
 from sklearn.model_selection import train_test_split, cross_val_score
 import numpy as np
@@ -22,23 +24,27 @@ class LastUpdatedOrderedDict(OrderedDict):
 
 
 # GLOBALS
-LOGGING          = True     # verbose logging output
-SPLIT_DATA       = 0.2      # split dataset into training and testdata
-DATAFRAME        = None     # our dataframe
-MISSING_VALUES   = 'mean'   # how to deal with missing values (delete, mean, median, most_frequent)
-SCALER           = None
+LOGGING                 = True     # verbose logging output
+SPLIT_DATA              = 0.2      # split dataset into training and testdata
+DATAFRAME               = None     # our dataframe
+MISSING_VALUES          = 'mean'   # how to deal with missing values (delete, mean, median, most_frequent)
+SCALER                  = None
+ONLY_IMPORTANT_FEATURES = False # better results with FALSE for this dataset!
+FEATURE_TRESHOLD        = 'median'
+NORMALIZE_DATA          = False # better results with FALSE for this dataset! (unless knn & neural)
+SCALE_DATA              = False # does not really matter for this dataset
 
 # PLOT EXPORT SETTINGS
 EXPORT_PLOT      = True
 X_LABEL          = 'Estimators'
-PLOT_FILE_NAME   = 'autoMPG_bagging.png'
+PLOT_FILE_NAME   = 'autoMPG/all_features/neural_relu_inv_2_20.png'
 
 
 # change the regressor values here!
 #ALGORITHMS         = ['forest',       'knn',        'neural',    'bagging'] #algorithms to use ['forest', 'knn', 'bayes', 'neural']
 #algorithmParameter = [(70, 70+1, 10), (1, 15+1, 1), (2, 20+1, 3), (1, 50+1, 5)] # set a parameter in range(start, end, jump)
-ALGORITHMS         = ['neural']
-algorithmParameter = [(10, 10+1, 5)]
+ALGORITHMS         = ['bagging']
+algorithmParameter = [(1, 50+1, 5)]
 
 # forest params (algorithmParameter controls n_estimators)
 forestCriterion = 'mse' # "mse" mean squared error "mae" mean absolute error
@@ -58,9 +64,9 @@ neuralLearningRate = 'invscaling'# (Learning rate schedule for weight updates).:
 neuralMaxIter = 200 # max_iter : int, optional, default 200
 
 # EXPORT PREDICTION
-EXPORT_PREDICTION = True
+EXPORT_PREDICTION = False
 EXPORT_MODEL      = None
-EXPORT_FILE_NAME  = 'autoMPG_neural_reluinv_10_2_prediction.csv'
+EXPORT_FILE_NAME  = 'autoMPG_forest_100_no_norm+scal_4.csv'
 
 
 # filter warnings of the type UndefinedMetricWarning
@@ -134,6 +140,20 @@ def trainAndPredict(regressors):
     training_samples, training_target = getSamplesAndTargets(train)
     test_samples,     actual_leagues  = getSamplesAndTargets(test)
 
+    # training/test split: use only the important features, discard the others
+    if ONLY_IMPORTANT_FEATURES:
+        clf = ExtraTreesRegressor()
+        print(training_samples)
+        print(training_target)
+        clf = clf.fit(training_samples, training_target)
+
+        selector = SelectFromModel(clf, prefit=True, threshold=FEATURE_TRESHOLD)
+        training_samples_new = selector.transform(training_samples)
+        printlog("Relevant columns:")
+        printlog(training_samples.columns[selector.get_support()]) # get_support is a bool array (true if the column is relevant)
+        training_samples = training_samples_new
+        test_samples = selector.transform(test_samples)
+
     for (model, name) in regressors:
         # for each regressor, do the training and evaluation
         model.fit(training_samples, training_target)
@@ -144,6 +164,14 @@ def trainAndPredict(regressors):
 
         # perform cross validation
         X, y = getSamplesAndTargets(DATAFRAME)
+
+        # cross validation: use only the important features, discard the others
+        if ONLY_IMPORTANT_FEATURES:
+            clf = ExtraTreesRegressor()
+            clf = clf.fit(X, y)
+            selector = SelectFromModel(clf, prefit=True, threshold=FEATURE_TRESHOLD)
+            X = selector.transform(X)
+
         crossScoresMeanAE       = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_absolute_error')
         crossScoresMeanSE       = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_error')
         crossScoresMeanSLE      = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='neg_mean_squared_log_error')
@@ -152,7 +180,7 @@ def trainAndPredict(regressors):
         crossScoresR2           = cross_val_score(model, X, y, cv=5, n_jobs=-1, scoring='r2')
 
         # summarize the fit of the model
-        crossScoresMean = (crossScoresMeanAE.mean(), crossScoresMeanSE.mean(), crossScoresMeanSLE.mean(), crossScoresMedianAE.mean(), crossScoresExplainedVar.mean(), crossScoresR2.mean())
+        crossScoresMean = ((-1)*crossScoresMeanAE.mean(), (-1)*crossScoresMeanSE.mean(), (-1)*crossScoresMeanSLE.mean(), (-1)*crossScoresMedianAE.mean(), crossScoresExplainedVar.mean(), crossScoresR2.mean())
         crossScoresStd  = (crossScoresMeanAE.std() * 2, crossScoresMeanSE.std() * 2, crossScoresMeanSLE.std() * 2, crossScoresMedianAE.std() * 2, crossScoresExplainedVar.std() * 2, crossScoresR2.std() * 2)
         printResults(crossScoresMean, crossScoresStd, actual_leagues, predicted_leagues, name)
         resultsPerRegressor[name] = crossScoresMean
@@ -180,7 +208,7 @@ def getRegressors():
                 regressors.append(
                     (BaggingRegressor(n_estimators=i), name))
             if val == "neural":
-                name = "Neural Network (perceptrons per layer={0})".format(i)
+                name = "Neural Network (3 layers with {0} nodes/layer)".format(i)
                 regressors.append(
                     (MLPRegressor(hidden_layer_sizes=(i, i, i), activation=neuralActivation, solver=neuralSolver,
                                    learning_rate=neuralLearningRate, max_iter=neuralMaxIter), name))
@@ -194,16 +222,18 @@ def normalizeDataset(data):
     if 'mpg' in data.columns:
         featureVal = featureVal.drop(columns=['mpg'])
 
-    SCALER = preprocessing.StandardScaler().fit(featureVal)
-    scaled_DF = pd.DataFrame(SCALER.transform(featureVal))
-    scaled_DF.columns = featureVal.columns
-    scaled_DF.index = featureVal.index
-    featureVal = scaled_DF
+    if SCALE_DATA:
+        SCALER = preprocessing.StandardScaler().fit(featureVal)
+        scaled_DF = pd.DataFrame(SCALER.transform(featureVal))
+        scaled_DF.columns = featureVal.columns
+        scaled_DF.index = featureVal.index
+        featureVal = scaled_DF
 
-    norm_DF = pd.DataFrame(preprocessing.normalize(featureVal, norm='l2'))
-    norm_DF.columns = featureVal.columns
-    norm_DF.index = featureVal.index
-    featureVal = norm_DF
+    if NORMALIZE_DATA:
+        norm_DF = pd.DataFrame(preprocessing.normalize(featureVal, norm='l2'))
+        norm_DF.columns = featureVal.columns
+        norm_DF.index = featureVal.index
+        featureVal = norm_DF
 
     if 'mpg' in data.columns:
         featureVal = data.loc[:, 'mpg':'mpg'].join(featureVal)
